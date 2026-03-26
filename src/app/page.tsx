@@ -120,7 +120,7 @@ export default function Page() {
       setCompleted(true);
 
       const p = prompt("Duration in m:", "0");
-      let duration;
+      let duration = 0;
       if(p) {
           duration = parseInt(p, 10);
       }
