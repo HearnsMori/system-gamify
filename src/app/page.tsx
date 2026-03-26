@@ -119,7 +119,8 @@ export default function Page() {
     } else {
       setCompleted(true);
 
-      const duration = parseInt(prompt("Duration in m:", "0"), 10);
+      const p = prompt("Duration in m:", "0");
+      if(p) const duration = parseInt(p, 10);
 
       if (duration >= 90) {
           setSpinsLeft(3);
