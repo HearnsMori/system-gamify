@@ -1,12 +1,13 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 type Task = {
   id: number;
   name: string;
   steps: string[];
+  duration?: 90 | 60 | 30;
 };
 
 const tasks: Task[] = [
@@ -38,7 +39,7 @@ const tasks: Task[] = [
   //Fine Arts, Exercise, Technology, Competition, Science
   {
     id: 2,
-    name: "90m Block: Science",
+    name: "Block: Science",
     steps: [
         'Write Things You Gonna Do for 90m',
         'Do It',
@@ -46,7 +47,7 @@ const tasks: Task[] = [
   },
   {
     id: 3,
-    name: "90m Block: Technology",
+    name: "Block: Technology",
     steps: [
         'Write Things You Gonna Do for 90m',
         'Do It',
@@ -54,7 +55,7 @@ const tasks: Task[] = [
   },
   {
     id: 4,
-    name: "90m Block: Competition",
+    name: "Block: Competition",
     steps: [
         'Write Things You Gonna Do for 90m',
         'Do It',
@@ -62,7 +63,7 @@ const tasks: Task[] = [
   },
   {
     id: 5,
-    name: "90m Block: Exercise",
+    name: "Block: Exercise",
     steps: [
         'Write Things You Gonna Do for 90m',
         'Do It',
@@ -70,7 +71,7 @@ const tasks: Task[] = [
   },
   {
     id: 6,
-    name: "90m Block: Fine Arts",
+    name: "Block: Fine Arts",
     steps: [
         'Write Things You Gonna Do for 90m',
         'Do It',
@@ -97,40 +98,85 @@ const tasks: Task[] = [
   },
 ];
 
+
 export default function Page() {
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [currentStep, setCurrentStep] = useState(0);
   const [completed, setCompleted] = useState(false);
+
   const [spinning, setSpinning] = useState(false);
   const [reward, setReward] = useState<string | null>(null);
-  const [rewardAlr, setRewardAlr] = useState<string | null>(null);
+  const [freetime, setFreetime] = useState<number>(0);
+  const [spinsLeft, setSpinsLeft] = useState(0);
+  const [allRewards, setAllRewards] = useState<string[]>([]);
+
 
   const handleStep = () => {
     if (!selectedTask) return;
-
+    setFreetime(0);
     if (currentStep < selectedTask.steps.length - 1) {
       setCurrentStep(currentStep + 1);
     } else {
       setCompleted(true);
+
+      const duration = parseInt(prompt("Duration in m:", "0"), 10);
+
+      if (duration >= 90) {
+          setSpinsLeft(3);
+      }
+      else if (duration >= 60) {
+          setSpinsLeft(2);
+      }
+      else if (duration >= 30) {
+          setSpinsLeft(1);
+      }
+      else window.location.reload();
     }
   };
+useEffect(() => {
+    if (spinsLeft == 0) {
+      if (freetime >= 0) {
+        setReward(`${freetime}m Healthy Break`);
+      } else {
+        setReward(`${freetime}m No Move`);
+      }
+    }
+}, [freetime, spinsLeft]);
 
-  const spinWheel = () => {
+
+  const spinWheel = async () => {
+    if (spinsLeft <= 0) return;
+
     setSpinning(true);
     setReward(null);
-    setRewardAlr(null);
+
     const isHigh = Math.random() < 0.73;
     const result = isHigh ? 'HIGH REWARD ✨' : 'LOW REWARD';
-    setRewardAlr(result);
+
     const stored = JSON.parse(localStorage.getItem('rewards') || '[]');
-    stored.push({ task: selectedTask?.name, reward: result, date: Date.now() });
+    stored.push({
+      task: selectedTask?.name,
+      reward: result,
+      date: Date.now(),
+    });
     localStorage.setItem('rewards', JSON.stringify(stored));
+      if(isHigh) {
+          setFreetime(prev=>prev+10);
+      } else {
+          setFreetime(prev=>prev-10);
+      }
     setTimeout(() => {
-      setReward(result);
+      if(result === 'HIGH REWARD ✨') {
+          setAllRewards((prev) => [...prev, result+": +10m"]);
+      } else {
+          setAllRewards((prev) => [...prev, result+": -10m"]);
+      }
+      setSpinsLeft((prev) => prev - 1);
     }, 3000);
+
     setTimeout(() => {
       setSpinning(false);
-    }, 7000);
+    }, 3000);
   };
 
   return (
@@ -147,10 +193,6 @@ export default function Page() {
         fontFamily: 'sans-serif',
       }}
     >
-      <h1 style={{ textAlign: 'center', letterSpacing: '2px' }}>
-        
-      </h1>
-
       {!selectedTask && (
         <div style={{ display: 'grid', gap: '12px' }}>
           {tasks.map((task) => (
@@ -162,6 +204,8 @@ export default function Page() {
                 setSelectedTask(task);
                 setCurrentStep(0);
                 setCompleted(false);
+                setAllRewards([]);
+                setSpinsLeft(0);
               }}
               style={{
                 padding: '16px',
@@ -205,8 +249,16 @@ export default function Page() {
         <div style={{ marginTop: '30px', textAlign: 'center' }}>
           <h2>Task Completed</h2>
 
+          <p>Spins Left: {spinsLeft}</p>
+
           <motion.div
-            animate={{ rotate: spinning ? (rewardAlr === 'HIGH REWARD ✨' ? 450+360*3 : 270+360*3) : 0}}
+            animate={{
+              rotate: spinning
+                ? reward === 'HIGH REWARD ✨'
+                  ? 450 + 360 * 3
+                  : 270 + 360 * 3
+                : 0,
+            }}
             transition={{ duration: 3, ease: 'easeIn' }}
             style={{
               margin: '30px auto',
@@ -223,9 +275,10 @@ export default function Page() {
           >
             <span>SPIN</span>
           </motion.div>
+
           <div>^</div>
 
-          {!spinning && !reward && (
+          {!spinning && spinsLeft > 0 && (
             <motion.button
               whileTap={{ scale: 0.9 }}
               onClick={spinWheel}
@@ -253,43 +306,30 @@ export default function Page() {
                   fontSize: '24px',
                   fontWeight: 'bold',
                   color:
-                    reward === 'HIGH REWARD ✨' ? '#00ffcc' : '#ff7675',
-                  textShadow:
                     reward === 'HIGH REWARD ✨'
-                      ? '0 0 20px #00ffcc'
-                      : 'none',
+                      ? '#00ffcc'
+                      : '#ff7675',
                 }}
               >
                 {reward}
               </motion.div>
             )}
           </AnimatePresence>
-            { reward === 'HIGH REWARD ✨' ? (
-                <li>
-                    <ul>Do Anything You Want for 30m</ul>
-                    <ul></ul>
-                    <ul></ul>
-                </li>
-            ) : (
-                <></>
-            )}
 
-            { reward === 'LOW REWARD' ? (
-                <li>
-                    <ul>Do Not Do Anything for 30m</ul>
-                    <ul>No Internet</ul>
-                    <ul>No Music</ul>
-                    <ul>No Sleeping</ul>
-                </li>
-            ) : (
-                <></>
-            )}
+          {/* ALL REWARDS */}
+          <div style={{ marginTop: '20px' }}>
+            {allRewards.map((r, i) => (
+              <div key={i}>{r}</div>
+            ))}
+          </div>
 
           <button
             onClick={() => {
               setSelectedTask(null);
               setReward(null);
               setCompleted(false);
+              setAllRewards([]);
+              setSpinsLeft(0);
             }}
             style={{
               marginTop: '20px',
@@ -308,4 +348,3 @@ export default function Page() {
     </div>
   );
 }
-
