@@ -2,11 +2,25 @@
 
 import { useState, useEffect } from 'react';
 
+type Block = {
+  start: Date;
+  end: Date;
+  completed: boolean;
+  reward: string | null;
+  label: string;
+};
+
+type Reward = {
+  type: string;
+  chance: number;
+  minutes: number;
+};
+
 function formatTime(date: Date) {
   return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
-function createBlock(start, minutes, label = 'S&T') {
+function createBlock(start: Date, minutes: number, label = 'S&T'): Block {
   return {
     start: new Date(start),
     end: new Date(start.getTime() + minutes * 60000),
@@ -16,7 +30,7 @@ function createBlock(start, minutes, label = 'S&T') {
   };
 }
 
-function closestIndexByHour(blocks, hour) {
+function closestIndexByHour(blocks: Block[], hour: number): number {
   let bestIdx = 0;
   let bestDiff = Infinity;
   for (let i = 0; i < blocks.length; i++) {
@@ -29,7 +43,7 @@ function closestIndexByHour(blocks, hour) {
   return bestIdx;
 }
 
-function relabelBlocks(blocks, sleepTime) {
+function relabelBlocks(blocks: Block[], sleepTime?: string): Block[] {
   if (!blocks.length) return [];
 
   const updated = blocks.map(b => ({ ...b, label: 'S&T' }));
@@ -39,12 +53,10 @@ function relabelBlocks(blocks, sleepTime) {
   updated[0].label = 'Wake Routine';
   if (updated[1]) updated[1].label = 'Fine Arts';
 
-  // Sleep (fixed)
-
   // Fine Arts near 12PM
   const a1Idx = closestIndexByHour(updated, 12);
   if (updated[a1Idx]) updated[a1Idx].label = 'Fine Arts';
-  if (updated[a1Idx+1]) updated[a1Idx+1].label = 'Fine Arts';
+  if (updated[a1Idx + 1]) updated[a1Idx + 1]?.label && (updated[a1Idx + 1].label = 'Fine Arts');
 
   // Exercise near 2PM
   const exIdx = closestIndexByHour(updated, 14);
@@ -55,78 +67,52 @@ function relabelBlocks(blocks, sleepTime) {
   const compIdx = closestIndexByHour(updated, 17);
   if (updated[compIdx]) updated[compIdx].label = 'Competition';
   if (updated[compIdx + 1]) updated[compIdx + 1].label = 'Competition';
-  
 
-  // Remove any S&T block that overlaps past sleep time
   if (sleepTime) {
-    const [sh2, sm2] = sleepTime.split(':');
+    const [sh, sm] = sleepTime.split(':').map(Number);
     const sleep = new Date();
-    sleep.setHours(sh2, sm2, 0, 0);
-    const updated2 = updated.filter(b => b.label !== 'S&T' || b.end <= sleep);
-    
-    // Sleep near sleeptime
-    const [sh, sm] = sleepTime.split(':');
-    const sleepIdx = closestIndexByHour(updated2, Number(sh));
-    if (updated2[sleepIdx]) updated2[sleepIdx].label = 'Sleep Routine';
-    if (updated2[sleepIdx - 1]) updated2[sleepIdx - 1].label = 'Fine Arts';
-    
-    return updated2;
-  }
+    sleep.setHours(sh, sm, 0, 0);
 
-  // Sleep near sleeptime
-  const [sh, sm] = sleepTime.split(':');
-  const sleepIdx = closestIndexByHour(updated, Number(sh));
-  if (updated[sleepIdx]) updated[sleepIdx].label = 'Sleep Routine';
-  if (updated[sleepIdx - 1]) updated[sleepIdx - 1].label = 'Fine Arts';
+    const filtered = updated.filter(b => b.label !== 'S&T' || b.end <= sleep);
+
+    // Sleep near sleeptime
+    const sleepIdx = closestIndexByHour(filtered, sh);
+    if (filtered[sleepIdx]) filtered[sleepIdx].label = 'Sleep Routine';
+    if (filtered[sleepIdx - 1]) filtered[sleepIdx - 1].label = 'Fine Arts';
+
+    return filtered;
+  }
 
   return updated;
 }
 
 export default function Page() {
   const STORAGE_KEY = 'scheduler_state';
-  const [wakeTime, setWakeTime] = useState('');
-  const [sleepTime, setSleepTime] = useState('');
-  const [blocks, setBlocks] = useState([]);
-  const [initialized, setInitialized] = useState(false);
+  const [wakeTime, setWakeTime] = useState<string>('');
+  const [sleepTime, setSleepTime] = useState<string>('');
+  const [blocks, setBlocks] = useState<Block[]>([]);
+  const [initialized, setInitialized] = useState<boolean>(false);
 
-  /* Load saved state
+  // Load saved state
   useEffect(() => {
     const saved = localStorage.getItem(STORAGE_KEY);
     if (saved) {
       const parsed = JSON.parse(saved);
       setWakeTime(parsed.wakeTime);
       setSleepTime(parsed.sleepTime);
-      const parsedBlocks = parsed.blocks.map(b => ({
-        ...b,
+
+      const parsedBlocks: Block[] = parsed.blocks.map((b: any) => ({
         start: new Date(b.start),
-        end: new Date(b.end)
+        end: new Date(b.end),
+        completed: b.completed ?? false,
+        reward: b.reward ?? null,
+        label: b.label ?? 'S&T'
       }));
+
       setBlocks(parsedBlocks);
       setInitialized(true);
     }
-  }, []);*/
-
-// Load saved state
-useEffect(() => {
-  const saved = localStorage.getItem(STORAGE_KEY);
-  if (saved) {
-    const parsed = JSON.parse(saved);
-
-    setWakeTime(parsed.wakeTime);
-    setSleepTime(parsed.sleepTime);
-
-    const parsedBlocks = parsed.blocks.map(b => ({
-      ...b,
-      start: new Date(b.start),
-      end: new Date(b.end),
-      completed: b.completed || false,
-      reward: b.reward || null
-    }));
-
-    setBlocks(parsedBlocks);
-    setInitialized(true);
-  }
-}, []);
+  }, []);
 
   // Save state
   useEffect(() => {
@@ -142,7 +128,7 @@ useEffect(() => {
     if (!initialized || !sleepTime) return;
     const interval = setInterval(() => {
       const now = new Date();
-      const [sh, sm] = sleepTime.split(':');
+      const [sh, sm] = sleepTime.split(':').map(Number);
       const sleep = new Date();
       sleep.setHours(sh, sm, 0, 0);
       if (now >= sleep) {
@@ -158,12 +144,11 @@ useEffect(() => {
 
   // Initialize blocks
   useEffect(() => {
-    if (!wakeTime || !sleepTime) return;
-    if (blocks.length > 0) return; // <-- don't overwrite loaded blocks
+    if (!wakeTime || !sleepTime || blocks.length > 0) return;
 
     const today = new Date();
-    const [wh, wm] = wakeTime.split(':');
-    const [sh, sm] = sleepTime.split(':');
+    const [wh, wm] = wakeTime.split(':').map(Number);
+    const [sh, sm] = sleepTime.split(':').map(Number);
 
     const wake = new Date(today);
     wake.setHours(wh, wm, 0, 0);
@@ -171,7 +156,7 @@ useEffect(() => {
     const sleep = new Date(today);
     sleep.setHours(sh, sm, 0, 0);
 
-    const tempBlocks = [];
+    const tempBlocks: Block[] = [];
     let current = new Date(wake);
     while (current < sleep) {
       tempBlocks.push(createBlock(current, 30));
@@ -183,7 +168,7 @@ useEffect(() => {
     setInitialized(true);
   }, [wakeTime, sleepTime]);
 
-  const applyBreakToFuture = (updatedBlocks, startIndex, minutes) => {
+  const applyBreakToFuture = (updatedBlocks: Block[], startIndex: number, minutes: number): Block[] => {
     if (minutes === 0) return updatedBlocks;
     const adjusted = [...updatedBlocks];
     for (let i = startIndex; i < adjusted.length; i++) {
@@ -193,8 +178,8 @@ useEffect(() => {
     return relabelBlocks(adjusted, sleepTime);
   };
 
-  const handleComplete = (index) => {
-    const rewards = [
+  const handleComplete = (index: number) => {
+    const rewards: Reward[] = [
       { type: 'none', chance: 0.3, minutes: 0 },
       { type: '5m break', chance: 0.4, minutes: 5 },
       { type: '15m break', chance: 0.2, minutes: 15 },
@@ -257,7 +242,7 @@ useEffect(() => {
             const now = new Date();
             const isCurrent = now >= b.start && now < b.end;
 
-            const colorMap = {
+            const colorMap: Record<string, string> = {
               'Exercise': '#ff9966',
               'Competition': '#f7797d',
               'Fine Arts': '#a18cd1',
