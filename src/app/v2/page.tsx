@@ -17,7 +17,7 @@ type Upgrades = {
   levelBoost: number;
 };
 
-const STORAGE_KEY = 'focus_cycle_state_v3';
+const STORAGE_KEY = 'focus_cycle_state_v4';
 
 const BLOCKS = [
   'Wake-Up Routine',
@@ -41,7 +41,9 @@ function todayKey() {
 export default function Page() {
   const [phase, setPhase] = useState<Phase>('select');
   const [prevPhase, setPrevPhase] = useState<Phase>('select');
-  const [timeLeft, setTimeLeft] = useState(60);
+
+  const [endTime, setEndTime] = useState<number | null>(null);
+
   const [selectedBlock, setSelectedBlock] = useState<string | null>(null);
   const [reward, setReward] = useState<Reward | null>(null);
 
@@ -58,7 +60,7 @@ export default function Page() {
   });
 
   const [initialized, setInitialized] = useState(false);
-  const [locked, setLocked] = useState(false); // 🔒 prevents changing block once started
+  const [locked, setLocked] = useState(false);
 
   // LOAD
   useEffect(() => {
@@ -67,7 +69,7 @@ export default function Page() {
       const p = JSON.parse(saved);
       setPhase(p.phase);
       setPrevPhase(p.prevPhase || 'select');
-      setTimeLeft(p.timeLeft);
+      setEndTime(p.endTime || null);
       setSelectedBlock(p.selectedBlock);
       setReward(p.reward);
       setCoins(p.coins || 0);
@@ -109,7 +111,7 @@ export default function Page() {
       JSON.stringify({
         phase,
         prevPhase,
-        timeLeft,
+        endTime,
         selectedBlock,
         reward,
         coins,
@@ -121,24 +123,30 @@ export default function Page() {
         locked
       })
     );
-  }, [phase, prevPhase, timeLeft, selectedBlock, reward, coins, level, bestLevel, streak, lastDate, upgrades, locked, initialized]);
+  }, [phase, prevPhase, endTime, selectedBlock, reward, coins, level, bestLevel, streak, lastDate, upgrades, locked, initialized]);
 
-  // TIMER
-  useEffect(() => {
-    if (!initialized) return;
+const [tick, setTick] = useState(0);
 
-    const interval = setInterval(() => {
-      setTimeLeft((prev) => {
-        if (prev <= 1) {
-          handlePhaseEnd();
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
+useEffect(() => {
+  if (!initialized || !endTime) return;
 
-    return () => clearInterval(interval);
-  }, [phase, initialized]);
+  const interval = setInterval(() => {
+    const remaining = endTime - Date.now();
+
+    setTick((t) => t + 1); // ✅ force re-render
+
+    if (remaining <= 0) {
+      handlePhaseEnd();
+    }
+  }, 1000);
+
+  return () => clearInterval(interval);
+}, [endTime, phase, initialized]);
+
+  const getTimeLeft = () => {
+    if (!endTime) return 0;
+    return Math.max(0, Math.floor((endTime - Date.now()) / 1000));
+  };
 
   const generateReward = (): Reward => {
     const rewards: Reward[] = [
@@ -184,9 +192,12 @@ export default function Page() {
 
   const startFocus = () => {
     if (!selectedBlock) return;
-    setLocked(true); // 🔒 lock selection
+
+    setLocked(true);
     setPhase('focus');
-    setTimeLeft(1800);
+
+    const duration = 30 * 60 * 1000;
+    setEndTime(Date.now() + duration);
   };
 
   const startBreak = () => {
@@ -194,22 +205,27 @@ export default function Page() {
     if (reward.minutes === 0) return resetCycle();
 
     setPhase('break');
-    setTimeLeft(reward.minutes * 60);
+
+    const duration = reward.minutes * 60 * 1000;
+    setEndTime(Date.now() + duration);
   };
 
   const resetCycle = () => {
     setPhase('select');
-    setTimeLeft(60);
     setSelectedBlock(null);
     setReward(null);
-    setLocked(false); // 🔓 unlock next cycle
+    setLocked(false);
+
+    // ✅ 15 minutes preparation time
+    const duration = 15 * 60 * 1000;
+    setEndTime(Date.now() + duration);
   };
 
   const buyUpgrade = (type: keyof Upgrades) => {
     const cost = 50 * upgrades[type];
     if (coins < cost) {
-        alert("Not Enough Coins");
-        return;
+      alert("Not Enough Coins");
+      return;
     }
 
     setCoins((c) => c - cost);
@@ -222,7 +238,7 @@ export default function Page() {
   };
 
   const closeShop = () => {
-    setPhase(prevPhase); // return to where you were
+    setPhase(prevPhase);
   };
 
   const btnStyle = {
@@ -235,6 +251,11 @@ export default function Page() {
     margin: '5px 0',
     width: '100%'
   } as const;
+
+
+  const timeLeft = endTime
+  ? Math.max(0, Math.floor((endTime - Date.now()) / 1000))
+  : 0;
 
   return (
     <div style={{ minHeight: '100vh', background: 'linear-gradient(180deg,#4facfe,#00f2fe)', color: '#fff', fontFamily: 'sans-serif', padding: 20 }}>
@@ -253,6 +274,7 @@ export default function Page() {
           {phase === 'select' && (
             <>
               <h2 style={{ marginBottom: 10 }}>Choose Focus</h2>
+
               {BLOCKS.map((b) => (
                 <button
                   key={b}
@@ -267,9 +289,11 @@ export default function Page() {
                   {b}
                 </button>
               ))}
+
               <button onClick={startFocus} style={{ ...btnStyle, background: '#fff', color: '#000' }}>
                 Continue
               </button>
+
               <div style={{ marginTop: 10 }}>{formatTime(timeLeft)}</div>
             </>
           )}
@@ -284,7 +308,9 @@ export default function Page() {
           {phase === 'reward' && reward && (
             <>
               <h2>{reward.type}</h2>
-              <button onClick={startBreak} style={{ ...btnStyle, background: '#fff', color: '#000' }}>Continue</button>
+              <button onClick={startBreak} style={{ ...btnStyle, background: '#fff', color: '#000' }}>
+                Continue
+              </button>
             </>
           )}
 
@@ -314,7 +340,9 @@ export default function Page() {
                 <button onClick={() => buyUpgrade('levelBoost')} style={btnStyle}>Buy</button>
               </div>
 
-              <button onClick={closeShop} style={{ ...btnStyle, background: '#fff', color: '#000' }}>Back</button>
+              <button onClick={closeShop} style={{ ...btnStyle, background: '#fff', color: '#000' }}>
+                Back
+              </button>
             </>
           )}
 
@@ -323,4 +351,3 @@ export default function Page() {
     </div>
   );
 }
-
