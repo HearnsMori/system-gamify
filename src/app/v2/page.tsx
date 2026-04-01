@@ -1,364 +1,235 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 
-type Phase = 'select' | 'focus' | 'reward' | 'break' | 'shop';
-
-type Reward = {
-    type: string;
-    chance: number;
-    minutes: number;
-};
-
-type Upgrades = {
-    startLevel: number;
-    coinBoost: number;
-    levelBoost: number;
-};
-
-const STORAGE_KEY = 'focus_cycle_state_v4';
-
-const BLOCKS = [
-    'Overall Hygiene No Low-Effort Dopamine',
-    'S&T',
-    'Competition',
-    'Fine Arts',
-    'Exercise'
+// Categorized data
+const data = [
+    {
+        category: '0-4hr',
+        items: [
+            { condition: 'JWU', action: 'Stand-up, Get Natural Light, Quick Water Only Wash for Face , Drink Water, Light Warmup + Belly Breathing, Tooth Brush, Do Cognitive Priming 15m default state, Probiotics, Eat, 15m Walk, Do Neck Curl 3 sets, Do Neck Tuck 3 sets, Shower, Cleanse Face, Apply Vitamin C Serum, Apply Moisturizer, Apply Sun Screen' },
+            { condition: 'Feeling tired', action: 'Do soft shadow boxing' },
+            { condition: 'Recommended sleep not yet complete', action: 'Relax entire face muscle including inside mouth, lowen shoulder, arms, and legs, diaphragmatic breath, and clear thinking' },
+            { condition: 'Nothing important to do', action: 'S&T' },
+        ],
+    },
+    {
+        category: '4-8hr',
+        items: [
+            { condition: 'Nothing important to do and have not done any competition', action: 'Competition' },
+            { condition: 'Nothing important to do and have done competition', action: 'Exercise' },
+            { condition: 'Distracted', action: 'Do diaphragmatic breating with proper posture and no other else' },
+            { condition: 'Not eaten for past 4hr', action: 'Eat Healthy Plate' },
+            { condition: 'Physically Tired', action: '90m Nap' },
+        ],
+    },
+    {
+        category: '8-12hr',
+        items: [
+            { condition: 'Nothing important to do', action: 'S&T' },
+            { condition: 'Distracted', action: 'Do diaphragmatic breating with proper posture and no other else' },
+            { condition: 'Not eaten for past 4hr', action: 'Eat Healthy Plate' },
+        ],
+    },
+    {
+        category: '12-15hr',
+        items: [
+            { condition: 'Nothing important to do and have not yet do fine art for 3hr', action: 'Fine Arts' },
+            { condition: 'Nothing important to do and done fine art for 3hr', action: 'S&T' },
+            { condition: 'Distracted', action: 'Do diaphragmatic breating with proper posture and no other else' },
+            { condition: 'Not eaten for past 2hr', action: 'Eat Healthy Plate' },
+        ],
+    },
+    {
+        category: '15-16hr',
+        items: [
+            { condition: 'Nothing important to do', action: 'Brush teeth, wash-face with cleanser, moisturizer, retinoid, dim light, lie down w/ diaphragmatic breath and reflect, sleep' },
+        ],
+    },
 ];
 
-function formatTime(seconds: number) {
-    const m = Math.floor(seconds / 60);
-    const s = seconds % 60;
-    return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
-}
-
-function todayKey() {
-    return new Date().toDateString();
-}
-
 export default function Page() {
-    const [phase, setPhase] = useState<Phase>('select');
-    const [prevPhase, setPrevPhase] = useState<Phase>('select');
+    const [selectedCategory, setSelectedCategory] = useState(0);
+    const [selectedItem, setSelectedItem] = useState<number | null>(null);
+    const [search, setSearch] = useState('');
 
-    const [endTime, setEndTime] = useState<number | null>(null);
+    const filteredItems = useMemo(() => {
+        const items = data[selectedCategory].items;
+        if (!search) return items;
+        return items.filter((i) =>
+                            i.condition.toLowerCase().includes(search.toLowerCase())
+                           );
+    }, [selectedCategory, search]);
 
-    const [selectedBlock, setSelectedBlock] = useState<string | null>(null);
-    const [reward, setReward] = useState<Reward | null>(null);
+    return (
+        <div style={styles.container}>
+        <h1 style={styles.title}>SYSTEM MAP</h1>
+        <p style={styles.subtitle}>Condition → Action [n(1) efficiency]</p>
 
-    const [coins, setCoins] = useState(0);
-    const [level, setLevel] = useState(1);
-    const [bestLevel, setBestLevel] = useState(1);
-    const [streak, setStreak] = useState(0);
-    const [lastDate, setLastDate] = useState('');
-
-    const [upgrades, setUpgrades] = useState<Upgrades>({
-        startLevel: 1,
-        coinBoost: 1,
-        levelBoost: 1
-    });
-
-    const [initialized, setInitialized] = useState(false);
-    const [locked, setLocked] = useState(false);
-
-    // LOAD
-    useEffect(() => {
-        const saved = localStorage.getItem(STORAGE_KEY);
-        if (saved) {
-            const p = JSON.parse(saved);
-            setPhase(p.phase);
-            setPrevPhase(p.prevPhase || 'select');
-            setEndTime(p.endTime || null);
-            setSelectedBlock(p.selectedBlock);
-            setReward(p.reward);
-            setCoins(p.coins || 0);
-            setLevel(p.level || 1);
-            setBestLevel(p.bestLevel || 1);
-            setStreak(p.streak || 0);
-            setLastDate(p.lastDate || '');
-            setUpgrades(p.upgrades || { startLevel: 1, coinBoost: 1, levelBoost: 1 });
-            setLocked(p.locked || false);
-        }
-        setInitialized(true);
-    }, []);
-
-    // DAILY RESET
-    useEffect(() => {
-        if (!initialized) return;
-        const today = todayKey();
-
-        if (lastDate !== today) {
-            const yesterday = new Date();
-            yesterday.setDate(yesterday.getDate() - 1);
-
-            if (lastDate === yesterday.toDateString()) {
-                setStreak((s) => s + 1);
-            } else {
-                setStreak(1);
-            }
-
-            setLevel(upgrades.startLevel);
-            setLastDate(today);
-        }
-    }, [initialized]);
-
-    // SAVE
-    useEffect(() => {
-        if (!initialized) return;
-        localStorage.setItem(
-            STORAGE_KEY,
-            JSON.stringify({
-                phase,
-                prevPhase,
-                endTime,
-                selectedBlock,
-                reward,
-                coins,
-                level,
-                bestLevel,
-                streak,
-                lastDate,
-                upgrades,
-                locked
-            })
-        );
-    }, [phase, prevPhase, endTime, selectedBlock, reward, coins, level, bestLevel, streak, lastDate, upgrades, locked, initialized]);
-
-    const [tick, setTick] = useState(0);
-
-    useEffect(() => {
-        if (!initialized || !endTime) return;
-
-        const interval = setInterval(() => {
-            const remaining = endTime - Date.now();
-
-            setTick((t) => t + 1); // ✅ force re-render
-
-            if (remaining <= 0) {
-                handlePhaseEnd();
-            }
-        }, 1000);
-
-        return () => clearInterval(interval);
-    }, [endTime, phase, initialized]);
-
-    const getTimeLeft = () => {
-        if (!endTime) return 0;
-        return Math.max(0, Math.floor((endTime - Date.now()) / 1000));
-    };
-
-    const generateReward = (): Reward => {
-        const rewards: Reward[] = [
-            { type: 'No Break', chance: 0.3, minutes: 0 },
-            { type: '5 min Break', chance: 0.4, minutes: 5 },
-            { type: '15 min Break', chance: 0.2, minutes: 15 },
-            { type: '1 hr Break', chance: 0.1, minutes: 60 }
-        ];
-
-        const rand = Math.random();
-        let cumulative = 0;
-
-        for (let r of rewards) {
-            cumulative += r.chance;
-            if (rand <= cumulative) return r;
-        }
-
-        return rewards[0];
-    };
-
-    const giveRewards = () => {
-        const coinsGain = (Math.floor(Math.random() * 10) + 5) * upgrades.coinBoost;
-        const levelGain = (Math.floor(Math.random() * 3) + 1) * upgrades.levelBoost;
-
-        setCoins((c) => c + coinsGain);
-        setLevel((l) => {
-            const newLevel = l + levelGain;
-            if (newLevel > bestLevel) setBestLevel(newLevel);
-            return newLevel;
-        });
-    };
-
-    const handlePhaseEnd = () => {
-        if (phase === 'focus') {
-            const a = prompt("Done without low-effort dopamine or other unrelated? (y/n)", "y");
-            if (a == 'n') {
-                resetCycle();
-                return;
-            }
-            giveRewards();
-            const r = generateReward();
-            setReward(r);
-            setPhase('reward');
-        } else if (phase === 'break') {
-            resetCycle();
-        }
-    };
-
-    const startFocus = () => {
-        if (!selectedBlock) return;
-
-        setLocked(true);
-        setPhase('focus');
-
-        const duration = 30 * 60 * 1000;
-        setEndTime(Date.now() + duration);
-    };
-
-    const startBreak = () => {
-        if (!reward) return;
-        if (reward.minutes === 0) return resetCycle();
-
-        setPhase('break');
-
-        const duration = reward.minutes * 60 * 1000;
-        setEndTime(Date.now() + duration);
-    };
-
-    const resetCycle = () => {
-        setPhase('select');
-        setSelectedBlock(null);
-        setReward(null);
-        setLocked(false);
-
-        // ✅ 15 minutes preparation time
-        const duration = 15 * 60 * 1000;
-        setEndTime(Date.now() + duration);
-    };
-
-    const buyUpgrade = (type: keyof Upgrades) => {
-        const cost = 50 * upgrades[type];
-        if (coins < cost) {
-            alert("Not Enough Coins");
-            return;
-        }
-
-        setCoins((c) => c - cost);
-        setUpgrades((u) => ({ ...u, [type]: u[type] + 1 }));
-    };
-    
-    const timeLeft = endTime ? Math.max(0, Math.floor((endTime - Date.now()) / 1000)) : 0;
-
-    const openShop = () => {
-        if(phase != 'shop') {
-            setPrevPhase(phase);
-        }
-        setPhase('shop');
-    };
-
-    const closeShop = () => {
-        if(prevPhase == 'shop') {
-            setPrevPhase('select');
-        }
-        setPhase(prevPhase);
-    };
-
-    const btnStyle = {
-        padding: '12px',
-        borderRadius: '10px',
-        border: 'none',
-        background: 'rgba(255,255,255,0.2)',
-        color: '#fff',
-        fontWeight: 'bold',
-        margin: '5px 0',
-        width: '100%'
-    } as const;
-
-
-
-        return (
-            <div style={{ minHeight: '100vh', background: 'linear-gradient(180deg,#4facfe,#00f2fe)', color: '#fff', fontFamily: 'sans-serif', padding: 20 }}>
-
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 15, fontSize: 14 }}>
-            <div>🔥 {streak}</div>
-            <div>💰 {coins}</div>
-            <div>⭐ {level} | Best {bestLevel}</div>
+        {/* Category Tabs */}
+        After Woke-Up
+        <div style={styles.tabs}>
+        {data.map((cat, i) => (
+            <div
+            key={i}
+            onClick={() => {
+                setSelectedCategory(i);
+                setSelectedItem(null);
+            }}
+            style={{
+                ...styles.tab,
+                borderBottom: selectedCategory === i ? '1px solid #fff' : '1px solid transparent',
+            }}
+            >
+            {cat.category}
             </div>
+        ))}
+        </div>
 
-            <button onClick={openShop} style={{ ...btnStyle, background: '#fff', color: '#000' }}>Shop</button>
+        {/* Search */}
+        <input
+        placeholder="Search condition..."
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+        style={styles.search}
+        />
 
-            <AnimatePresence mode="wait">
-            <motion.div key={phase} initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 1.05 }}>
-
-            {phase === 'select' && (
-                <>
-                <h2 style={{ marginBottom: 10 }}>Choose Focus</h2>
-
-                {BLOCKS.map((b) => (
-                    <button
-                    key={b}
-                    disabled={locked}
-                    onClick={() => !locked && setSelectedBlock(b)}
-                    style={{
-                        ...btnStyle,
-                        opacity: locked ? 0.5 : 1,
-                        border: selectedBlock === b ? '2px solid #fff' : 'none'
-                    }}
-                    >
-                    {b}
-                    </button>
-                ))}
-
-                <button onClick={startFocus} style={{ ...btnStyle, background: '#fff', color: '#000' }}>
-                Continue
-                </button>
-
-                <div style={{ marginTop: 10 }}>{formatTime(timeLeft)}</div>
-                </>
-            )}
-
-            {phase === 'focus' && (
-                <>
-                <h2>{selectedBlock}</h2>
-                <div style={{ fontSize: 40 }}>{formatTime(timeLeft)}</div>
-                <button onClick={resetCycle} style={{ ...btnStyle, background: '#fff', color: '#000' }}>
-                Fail
-                </button>
-                </>
-            )}
-
-            {phase === 'reward' && reward && (
-                <>
-                <h2>{reward.type}</h2>
-                <button onClick={startBreak} style={{ ...btnStyle, background: '#fff', color: '#000' }}>
-                Continue
-                </button>
-                </>
-            )}
-
-            {phase === 'break' && (
-                <>
-                <h2>Break</h2>
-                <div style={{ fontSize: 40 }}>{formatTime(timeLeft)}</div>
-                </>
-            )}
-
-            {phase === 'shop' && (
-                <>
-                <h2>Shop</h2>
-
-                <div style={{ marginBottom: 10 }}>
-                Start Level Lv{upgrades.startLevel} (Cost {50 * upgrades.startLevel})
-                <button onClick={() => buyUpgrade('startLevel')} style={btnStyle}>Buy</button>
-                </div>
-
-                <div style={{ marginBottom: 10 }}>
-                Coin Boost x{upgrades.coinBoost} (Cost {50 * upgrades.coinBoost})
-                <button onClick={() => buyUpgrade('coinBoost')} style={btnStyle}>Buy</button>
-                </div>
-
-                <div style={{ marginBottom: 10 }}>
-                Level Boost x{upgrades.levelBoost} (Cost {50 * upgrades.levelBoost})
-                <button onClick={() => buyUpgrade('levelBoost')} style={btnStyle}>Buy</button>
-                </div>
-
-                <button onClick={closeShop} style={{ ...btnStyle, background: '#fff', color: '#000' }}>
-                Back
-                </button>
-                </>
-            )}
-
+        <div style={styles.layout}>
+        {/* Condition List */}
+        <div style={styles.sidebar}>
+        {filteredItems.map((item, index) => (
+            <motion.div
+            key={index}
+            whileTap={{ scale: 0.97 }}
+            onClick={() => setSelectedItem(index)}
+            style={{
+                ...styles.conditionItem,
+                background: selectedItem === index ? '#fff' : 'transparent',
+                color: selectedItem === index ? '#000' : '#fff',
+            }}
+            title={item.condition}
+            >
+            {truncate(item.condition)}
             </motion.div>
-            </AnimatePresence>
-            </div>
-        );
+        ))}
+        </div>
+
+        {/* Action Panel */}
+        <div style={styles.main}>
+        <AnimatePresence mode="wait">
+        {selectedItem !== null && filteredItems[selectedItem] && (
+            <motion.div
+            key={selectedItem}
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            transition={{ duration: 0.25 }}
+            style={styles.actionCard}
+            >
+            <h2 style={styles.conditionTitle}>
+            {filteredItems[selectedItem].condition}
+            </h2>
+            <p style={styles.actionText}>
+            {filteredItems[selectedItem].action}
+            </p>
+            </motion.div>
+        )}
+        </AnimatePresence>
+
+        {selectedItem === null && (
+            <div style={styles.placeholder}>Select a condition</div>
+        )}
+        </div>
+        </div>
+        </div>
+    );
 }
+
+function truncate(text: string, max = 40) {
+    if (text.length <= max) return text;
+    return text.slice(0, max) + '...';
+}
+
+const styles: { [key: string]: React.CSSProperties } = {
+    container: {
+        background: '#000',
+        color: '#fff',
+        minHeight: '100vh',
+        fontFamily: 'sans-serif',
+        padding: '16px',
+    },
+    title: {
+        fontSize: '24px',
+        letterSpacing: '2px',
+    },
+    subtitle: {
+        fontSize: '11px',
+        opacity: 0.6,
+        marginBottom: '10px',
+    },
+    tabs: {
+        display: 'flex',
+        gap: '10px',
+        overflowX: 'auto',
+        marginBottom: '10px',
+    },
+    tab: {
+        padding: '6px 10px',
+        cursor: 'pointer',
+        fontSize: '12px',
+        whiteSpace: 'nowrap',
+    },
+    search: {
+        width: '100%',
+        padding: '8px',
+        marginBottom: '10px',
+        background: '#000',
+        color: '#fff',
+        border: '1px solid #333',
+        outline: 'none',
+    },
+    layout: {
+        display: 'flex',
+        gap: '10px',
+    },
+    sidebar: {
+        width: '45%',
+        borderRight: '1px solid #222',
+        overflowY: 'auto',
+        maxHeight: '75vh',
+    },
+    conditionItem: {
+        padding: '10px',
+        borderBottom: '1px solid #111',
+        cursor: 'pointer',
+        fontSize: '12px',
+        whiteSpace: 'nowrap',
+        overflow: 'hidden',
+        textOverflow: 'ellipsis',
+    },
+    main: {
+        width: '55%',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    actionCard: {
+        border: '1px solid #fff',
+        padding: '16px',
+        maxWidth: '320px',
+    },
+    conditionTitle: {
+        fontSize: '16px',
+        marginBottom: '8px',
+    },
+    actionText: {
+        fontSize: '13px',
+        opacity: 0.8,
+    },
+    placeholder: {
+        opacity: 0.3,
+        fontSize: '12px',
+    },
+};
+
