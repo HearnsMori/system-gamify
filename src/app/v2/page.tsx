@@ -8,7 +8,7 @@ const data = [
     {
         category: '0-4hr',
         items: [
-            { condition: 'JWU', action: 'Stand-up, Get Natural Light, Quick Water Only Wash for Face , Drink Water, Light Warmup + Belly Breathing, Tooth Brush, Do Cognitive Priming 15m default state, Probiotics, Eat, 15m Walk, Do Neck Curl 3 sets, Do Neck Tuck 3 sets, Shower, Cleanse Face, Apply Vitamin C Serum, Apply Moisturizer, Apply Sun Screen' },
+            { condition: 'JWU', action: 'Update her, Stand-up, Get Natural Light, Quick Water Only Wash for Face , Drink Water, Light Warmup + Belly Breathing, Tooth Brush, Do Cognitive Priming 15m default state, Probiotics, Eat, 15m Walk, Do Neck Curl 3 sets, Do Neck Tuck 3 sets, Shower, Cleanse Face, Apply Vitamin C Serum, Apply Moisturizer, Apply Sun Screen' },
             { condition: 'Feeling tired', action: 'Do soft shadow boxing' },
             { condition: 'Recommended sleep not yet complete', action: 'Relax entire face muscle including inside mouth, lowen shoulder, arms, and legs, diaphragmatic breath, and clear thinking' },
             { condition: 'Nothing important to do', action: 'S&T' },
