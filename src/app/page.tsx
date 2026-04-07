@@ -1,364 +1,185 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import React, { useState } from 'react';
+import { motion } from 'framer-motion';
 
-type Phase = 'select' | 'focus' | 'reward' | 'break' | 'shop';
-
-type Reward = {
-    type: string;
-    chance: number;
-    minutes: number;
-};
-
-type Upgrades = {
-    startLevel: number;
-    coinBoost: number;
-    levelBoost: number;
-};
-
-const STORAGE_KEY = 'focus_cycle_state_v4';
-
-const BLOCKS = [
-    'Overall Hygiene No Low-Effort Dopamine',
-    'S&T',
-    'Competition',
-    'Fine Arts',
-    'Exercise'
-];
-
-function formatTime(seconds: number) {
-    const m = Math.floor(seconds / 60);
-    const s = seconds % 60;
-    return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+interface Segment {
+  label: string;
+  weight: number;
+  color: string;
 }
 
-function todayKey() {
-    return new Date().toDateString();
+const segments: Segment[] = [
+  { label: 'No Rest', weight: 30, color: '#0f172a' },
+  { label: '5m Rest', weight: 40, color: '#1e293b' },
+  { label: '30m Rest', weight: 20, color: '#334155' },
+  { label: '60m Rest', weight: 10, color: '#475569' },
+];
+
+function getRandomSegment(): Segment {
+  const rand = Math.random() * 100;
+  let cumulative = 0;
+
+  for (const seg of segments) {
+    cumulative += seg.weight;
+    if (rand <= cumulative) return seg;
+  }
+
+  return segments[0];
 }
 
 export default function Page() {
-    const [phase, setPhase] = useState<Phase>('select');
-    const [prevPhase, setPrevPhase] = useState<Phase>('select');
+  const [rotation, setRotation] = useState<number>(0);
+  const [result, setResult] = useState<string>('Tap to spin');
+  const [spinning, setSpinning] = useState<boolean>(false);
 
-    const [endTime, setEndTime] = useState<number | null>(null);
+  const spinWheel = (): void => {
+    if (spinning) return;
 
-    const [selectedBlock, setSelectedBlock] = useState<string | null>(null);
-    const [reward, setReward] = useState<Reward | null>(null);
+    const chosen = getRandomSegment();
+    const index = segments.findIndex((s) => s.label === chosen.label);
+    const segmentAngle = 360 / segments.length;
 
-    const [coins, setCoins] = useState(0);
-    const [level, setLevel] = useState(1);
-    const [bestLevel, setBestLevel] = useState(1);
-    const [streak, setStreak] = useState(0);
-    const [lastDate, setLastDate] = useState('');
+    // current rotation normalized
+    const currentRotation = rotation % 360;
 
-    const [upgrades, setUpgrades] = useState<Upgrades>({
-        startLevel: 1,
-        coinBoost: 1,
-        levelBoost: 1
-    });
+    // center of selected segment
+    const targetAngle = 360 - (index * segmentAngle + segmentAngle / 2);
 
-    const [initialized, setInitialized] = useState(false);
-    const [locked, setLocked] = useState(false);
+    // calculate exact delta needed
+    let delta = targetAngle - currentRotation;
+    if (delta < 0) delta += 360;
 
-    // LOAD
-    useEffect(() => {
-        const saved = localStorage.getItem(STORAGE_KEY);
-        if (saved) {
-            const p = JSON.parse(saved);
-            setPhase(p.phase);
-            setPrevPhase(p.prevPhase || 'select');
-            setEndTime(p.endTime || null);
-            setSelectedBlock(p.selectedBlock);
-            setReward(p.reward);
-            setCoins(p.coins || 0);
-            setLevel(p.level || 1);
-            setBestLevel(p.bestLevel || 1);
-            setStreak(p.streak || 0);
-            setLastDate(p.lastDate || '');
-            setUpgrades(p.upgrades || { startLevel: 1, coinBoost: 1, levelBoost: 1 });
-            setLocked(p.locked || false);
-        }
-        setInitialized(true);
-    }, []);
+    const extraSpins = 1440; // smooth animation
+    const newRotation = rotation + extraSpins + delta;
 
-    // DAILY RESET
-    useEffect(() => {
-        if (!initialized) return;
-        const today = todayKey();
+    setSpinning(true);
+    setRotation(newRotation);
 
-        if (lastDate !== today) {
-            const yesterday = new Date();
-            yesterday.setDate(yesterday.getDate() - 1);
+    setTimeout(() => {
+      setResult(chosen.label);
+      setSpinning(false);
+    }, 2000);
+  };
 
-            if (lastDate === yesterday.toDateString()) {
-                setStreak((s) => s + 1);
-            } else {
-                setStreak(1);
-            }
+  return (
+    <div style={styles.container}>
+      <h1 style={styles.title}>Break Wheel</h1>
 
-            setLevel(upgrades.startLevel);
-            setLastDate(today);
-        }
-    }, [initialized]);
+      <div style={styles.wheelWrapper}>
+        <motion.div
+          animate={{ rotate: rotation }}
+          transition={{ duration: 2.2, ease: [0.22, 1, 0.36, 1] }}
+          style={styles.wheel}
+        >
+          {segments.map((seg, i) => {
+            const angle = (360 / segments.length) * i;
 
-    // SAVE
-    useEffect(() => {
-        if (!initialized) return;
-        localStorage.setItem(
-            STORAGE_KEY,
-            JSON.stringify({
-                phase,
-                prevPhase,
-                endTime,
-                selectedBlock,
-                reward,
-                coins,
-                level,
-                bestLevel,
-                streak,
-                lastDate,
-                upgrades,
-                locked
-            })
-        );
-    }, [phase, prevPhase, endTime, selectedBlock, reward, coins, level, bestLevel, streak, lastDate, upgrades, locked, initialized]);
-
-    const [tick, setTick] = useState(0);
-
-    useEffect(() => {
-        if (!initialized || !endTime) return;
-
-        const interval = setInterval(() => {
-            const remaining = endTime - Date.now();
-
-            setTick((t) => t + 1); // ✅ force re-render
-
-            if (remaining <= 0) {
-                handlePhaseEnd();
-            }
-        }, 1000);
-
-        return () => clearInterval(interval);
-    }, [endTime, phase, initialized]);
-
-    const getTimeLeft = () => {
-        if (!endTime) return 0;
-        return Math.max(0, Math.floor((endTime - Date.now()) / 1000));
-    };
-
-    const generateReward = (): Reward => {
-        const rewards: Reward[] = [
-            { type: 'No Break', chance: 0.3, minutes: 0 },
-            { type: '5 min Break', chance: 0.4, minutes: 5 },
-            { type: '15 min Break', chance: 0.2, minutes: 15 },
-            { type: '1 hr Break', chance: 0.1, minutes: 60 }
-        ];
-
-        const rand = Math.random();
-        let cumulative = 0;
-
-        for (let r of rewards) {
-            cumulative += r.chance;
-            if (rand <= cumulative) return r;
-        }
-
-        return rewards[0];
-    };
-
-    const giveRewards = () => {
-        const coinsGain = (Math.floor(Math.random() * 10) + 5) * upgrades.coinBoost;
-        const levelGain = (Math.floor(Math.random() * 3) + 1) * upgrades.levelBoost;
-
-        setCoins((c) => c + coinsGain);
-        setLevel((l) => {
-            const newLevel = l + levelGain;
-            if (newLevel > bestLevel) setBestLevel(newLevel);
-            return newLevel;
-        });
-    };
-
-    const handlePhaseEnd = () => {
-        if (phase === 'focus') {
-            const a = prompt("Done without low-effort dopamine or other unrelated? (y/n)", "y");
-            if (a == 'n') {
-                resetCycle();
-                return;
-            }
-            giveRewards();
-            const r = generateReward();
-            setReward(r);
-            setPhase('reward');
-        } else if (phase === 'break') {
-            resetCycle();
-        }
-    };
-
-    const startFocus = () => {
-        if (!selectedBlock) return;
-
-        setLocked(true);
-        setPhase('focus');
-
-        const duration = 30 * 60 * 1000;
-        setEndTime(Date.now() + duration);
-    };
-
-    const startBreak = () => {
-        if (!reward) return;
-        if (reward.minutes === 0) return resetCycle();
-
-        setPhase('break');
-
-        const duration = reward.minutes * 60 * 1000;
-        setEndTime(Date.now() + duration);
-    };
-
-    const resetCycle = () => {
-        setPhase('select');
-        setSelectedBlock(null);
-        setReward(null);
-        setLocked(false);
-
-        // ✅ 15 minutes preparation time
-        const duration = 15 * 60 * 1000;
-        setEndTime(Date.now() + duration);
-    };
-
-    const buyUpgrade = (type: keyof Upgrades) => {
-        const cost = 50 * upgrades[type];
-        if (coins < cost) {
-            alert("Not Enough Coins");
-            return;
-        }
-
-        setCoins((c) => c - cost);
-        setUpgrades((u) => ({ ...u, [type]: u[type] + 1 }));
-    };
-
-    const timeLeft = endTime ? Math.max(0, Math.floor((endTime - Date.now()) / 1000)) : 0;
-
-    const openShop = () => {
-        if(phase != 'shop') {
-            setPrevPhase(phase);
-        }
-        setPhase('shop');
-    };
-
-    const closeShop = () => {
-        if(prevPhase == 'shop') {
-            setPrevPhase('select');
-        }
-        setPhase(prevPhase);
-    };
-
-    const btnStyle = {
-        padding: '12px',
-        borderRadius: '10px',
-        border: 'none',
-        background: 'rgba(255,255,255,0.2)',
-        color: '#fff',
-        fontWeight: 'bold',
-        margin: '5px 0',
-        width: '100%'
-    } as const;
-
-
-
-    return (
-        <div style={{ minHeight: '100vh', background: 'linear-gradient(180deg,#4facfe,#00f2fe)', color: '#fff', fontFamily: 'sans-serif', padding: 20 }}>
-
-        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 15, fontSize: 14 }}>
-        <div>🔥 {streak}</div>
-        <div>💰 {coins}</div>
-        <div>⭐ {level} | Best {bestLevel}</div>
-        </div>
-
-        <button onClick={openShop} style={{ ...btnStyle, background: '#fff', color: '#000' }}>Shop</button>
-
-        <AnimatePresence mode="wait">
-        <motion.div key={phase} initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 1.05 }}>
-
-        {phase === 'select' && (
-            <>
-            <h2 style={{ marginBottom: 10 }}>Choose Focus</h2>
-
-            {BLOCKS.map((b) => (
-                <button
-                key={b}
-                disabled={locked}
-                onClick={() => !locked && setSelectedBlock(b)}
+            return (
+              <div
+                key={i}
                 style={{
-                    ...btnStyle,
-                    opacity: locked ? 0.5 : 1,
-                    border: selectedBlock === b ? '2px solid #fff' : 'none'
+                  ...styles.segment,
+                  transform: `rotate(${angle}deg)`,
+                  background: seg.color,
                 }}
-                >
-                {b}
-                </button>
-            ))}
-
-            <button onClick={startFocus} style={{ ...btnStyle, background: '#fff', color: '#000' }}>
-            Continue
-            </button>
-
-            <div style={{ marginTop: 10 }}>{formatTime(timeLeft)}</div>
-            </>
-        )}
-
-        {phase === 'focus' && (
-            <>
-            <h2>{selectedBlock}</h2>
-            <div style={{ fontSize: 40 }}>{formatTime(timeLeft)}</div>
-            <button onClick={resetCycle} style={{ ...btnStyle, background: '#fff', color: '#000' }}>
-            Fail
-            </button>
-            </>
-        )}
-
-        {phase === 'reward' && reward && (
-            <>
-            <h2>{reward.type}</h2>
-            <button onClick={startBreak} style={{ ...btnStyle, background: '#fff', color: '#000' }}>
-            Continue
-            </button>
-            </>
-        )}
-
-        {phase === 'break' && (
-            <>
-            <h2>Break</h2>
-            <div style={{ fontSize: 40 }}>{formatTime(timeLeft)}</div>
-            </>
-        )}
-
-        {phase === 'shop' && (
-            <>
-            <h2>Shop</h2>
-
-            <div style={{ marginBottom: 10 }}>
-            Start Level Lv{upgrades.startLevel} (Cost {50 * upgrades.startLevel})
-            <button onClick={() => buyUpgrade('startLevel')} style={btnStyle}>Buy</button>
-            </div>
-
-            <div style={{ marginBottom: 10 }}>
-            Coin Boost x{upgrades.coinBoost} (Cost {50 * upgrades.coinBoost})
-            <button onClick={() => buyUpgrade('coinBoost')} style={btnStyle}>Buy</button>
-            </div>
-
-            <div style={{ marginBottom: 10 }}>
-            Level Boost x{upgrades.levelBoost} (Cost {50 * upgrades.levelBoost})
-            <button onClick={() => buyUpgrade('levelBoost')} style={btnStyle}>Buy</button>
-            </div>
-
-            <button onClick={closeShop} style={{ ...btnStyle, background: '#fff', color: '#000' }}>
-            Back
-            </button>
-            </>
-        )}
-
+              >
+                <span style={styles.label}>{seg.label}</span>
+              </div>
+            );
+          })}
         </motion.div>
-        </AnimatePresence>
-        </div>
-    );
+
+        <div style={styles.pointer} />
+      </div>
+
+      <button style={styles.button} onClick={spinWheel}>
+        {spinning ? 'Spinning...' : 'Spin'}
+      </button>
+
+      <p style={styles.result}>{result}</p>
+    </div>
+  );
 }
+
+const styles: Record<string, React.CSSProperties> = {
+  container: {
+    height: '100vh',
+    background: 'linear-gradient(135deg, #020617, #0f172a)',
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    color: '#e2e8f0',
+    fontFamily: 'system-ui, sans-serif',
+    padding: '16px',
+  },
+  title: {
+    fontSize: '30px',
+    fontWeight: 600,
+    marginBottom: '24px',
+    letterSpacing: '0.5px',
+  },
+  wheelWrapper: {
+    position: 'relative',
+    width: '300px',
+    height: '300px',
+    marginBottom: '28px',
+  },
+  wheel: {
+    width: '100%',
+    height: '100%',
+    borderRadius: '50%',
+    overflow: 'hidden',
+    position: 'relative',
+    boxShadow: '0 20px 60px rgba(0,0,0,0.6)',
+  },
+  segment: {
+    position: 'absolute',
+    width: '50%',
+    height: '50%',
+    top: '50%',
+    left: '50%',
+    transformOrigin: '0% 0%',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  label: {
+    transform: 'rotate(45deg)',
+    fontSize: '12px',
+    fontWeight: 500,
+    textAlign: 'center',
+    padding: '6px',
+    color: '#f1f5f9',
+  },
+  pointer: {
+    position: 'absolute',
+    top: '73px',
+    left: '95%',
+    transform: 'translateX(-50%)',
+    width: '0',
+    height: '0',
+    borderLeft: '12px solid transparent',
+    borderRight: '12px solid transparent',
+    borderBottom: '22px solid #f1f5f9',
+    filter: 'drop-shadow(0 4px 6px rgba(0,0,0,0.5))',
+  },
+  button: {
+    padding: '14px 28px',
+    fontSize: '16px',
+    fontWeight: 600,
+    background: '#f1f5f9',
+    color: '#020617',
+    border: 'none',
+    borderRadius: '999px',
+    cursor: 'pointer',
+    marginBottom: '14px',
+    boxShadow: '0 10px 30px rgba(0,0,0,0.4)',
+  },
+  result: {
+    fontSize: '20px',
+    fontWeight: 500,
+    opacity: 0.95,
+  },
+};

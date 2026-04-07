@@ -10,10 +10,10 @@ interface Segment {
 }
 
 const segments: Segment[] = [
-  { label: 'No Moniegold', weight: 30, color: '#0f172a' },
-  { label: '1 Moniegold', weight: 40, color: '#1e293b' },
-  { label: '3 Moniegold', weight: 20, color: '#334155' },
-  { label: '12 Moniegold', weight: 10, color: '#475569' },
+  { label: 'No Rest', weight: 30, color: '#0f172a' },
+  { label: '5m Rest', weight: 40, color: '#1e293b' },
+  { label: '30m Rest', weight: 20, color: '#334155' },
+  { label: '60m Rest', weight: 10, color: '#475569' },
 ];
 
 function getRandomSegment(): Segment {
